@@ -1,27 +1,36 @@
 import os
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from flask import Flask, request
+from telegram import Update, Bot
+from telegram.ext import Dispatcher, CommandHandler, CallbackContext
+
+app = Flask(__name__)
+
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+bot = Bot(TOKEN)
+dispatcher = Dispatcher(bot, None, workers=0)
 
 # Define the start command
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text('Hello! I am your bot!')
 
-def main():
-    # Load the bot token from the environment variable
-    TOKEN = os.getenv("TELEGRAM_TOKEN")
-    if not TOKEN:
-        raise ValueError("No TELEGRAM_TOKEN provided")
+dispatcher.add_handler(CommandHandler("start", start))
 
-    # Set up the Updater and Dispatcher
-    updater = Updater(TOKEN)
-    dispatcher = updater.dispatcher
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook() -> str:
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return "ok"
 
-    # Register the start command handler
-    dispatcher.add_handler(CommandHandler("start", start))
+@app.route("/set_webhook", methods=["GET"])
+def set_webhook() -> str:
+    url = os.getenv("WEBHOOK_URL")
+    if not url:
+        return "Error: No WEBHOOK_URL provided", 400
 
-    # Start the bot
-    updater.start_polling()
-    updater.idle()
+    webhook_url = f"{url}/{TOKEN}"
+    bot.set_webhook(webhook_url)
+    return f"Webhook set to {webhook_url}"
 
 if __name__ == '__main__':
-    main()
+    # Set up Flask server
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
